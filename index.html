@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Daily State">
+<meta name="theme-color" content="#111827">
+<title>Daily State</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;color-scheme:light dark}
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#111827}
+.wrap{max-width:760px;margin:auto;padding:18px 14px 95px}h1{font-size:28px;margin:6px 0 2px}.muted{color:#6b7280;font-size:13px;line-height:1.35}
+.tabs{display:flex;gap:8px;margin:16px 0}.tabs button{flex:1}
+button{border:0;border-radius:12px;padding:12px 14px;font-size:16px;font-weight:650;background:#e5e7eb;color:#111827}
+button.primary,button.active{background:#2563eb;color:white}.card{background:white;border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 1px 3px #00000014}
+.metric{margin:18px 0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.value{font-weight:750;min-width:28px;text-align:right}
+input[type=range]{width:100%;margin-top:8px}input[type=date],select,textarea{font:inherit;border:1px solid #d1d5db;border-radius:10px;padding:9px;background:transparent;color:inherit}
+textarea{width:100%;min-height:82px;margin-top:10px}.entry{padding:12px 0;border-bottom:1px solid #e5e7eb}.entry:last-child{border-bottom:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.chip{font-size:12px;padding:4px 7px;border-radius:999px;background:#e5e7eb;color:#111827}
+.hidden{display:none}.footer{position:fixed;bottom:0;left:0;right:0;background:#ffffffee;backdrop-filter:blur(12px);border-top:1px solid #e5e7eb;padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
+.footer>div{max-width:760px;margin:auto;display:flex;gap:8px}.footer button{flex:1}canvas{width:100%;height:240px}
+@media(prefers-color-scheme:dark){body{background:#0f172a;color:#f8fafc}.card{background:#111827}.muted{color:#94a3b8}.footer{background:#0f172aee;border-color:#334155}.entry{border-color:#334155}button{background:#334155;color:#f8fafc}.chip{background:#334155;color:#f8fafc}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Daily State</h1>
+<div class="muted">Én registrering per dag. Energi og søvn: 10 = best. De andre: 10 = verst.</div>
+<div class="tabs">
+<button id="tToday" class="active">I dag</button><button id="tHist">Historikk</button><button id="tGraph">Graf</button>
+</div>
+
+<section id="today">
+<div class="card"><div class="row"><strong>Dato</strong><input id="date" type="date"></div></div>
+<div class="card" id="metrics"></div>
+<div class="card"><strong>Notat</strong><textarea id="note" placeholder="Valgfritt: koffein, mat, søvn, noe spesielt …"></textarea></div>
+</section>
+
+<section id="hist" class="hidden"><div class="card"><div class="row"><strong>Historikk</strong><button id="csv">Eksporter CSV</button></div><div id="histList"></div></div></section>
+
+<section id="graph" class="hidden"><div class="card"><div class="row"><strong>Utvikling</strong><select id="gMetric">
+<option value="energy">Energi</option><option value="apathy">Apati</option><option value="anhedonia">Anhedoni</option><option value="brainfog">Brain fog</option><option value="anxiety">Angst / uro</option><option value="sleep">Søvn</option>
+</select></div><canvas id="chart" width="700" height="260"></canvas></div></section>
+</div>
+
+<div class="footer" id="footer"><div><button id="reset">Nullstill</button><button id="save" class="primary">Lagre dagen</button></div></div>
+
+<script>
+const defs=[
+["energy","Energi","0 = tom, 10 = full av energi"],
+["apathy","Apati / activation cost","0 = gjør ting spontant, 10 = alt er uoverkommelig"],
+["anhedonia","Anhedoni","0 = normal glede, 10 = ingenting gir noe"],
+["brainfog","Brain fog","0 = krystallklar, 10 = helt tåket"],
+["anxiety","Angst / indre uro","0 = rolig, 10 = ekstrem uro"],
+["sleep","Søvnkvalitet","0 = elendig, 10 = svært god"]];
+const $=x=>document.getElementById(x),KEY="daily-state-v2";
+const load=()=>{try{return JSON.parse(localStorage.getItem(KEY)||"{}")}catch{return{}}};
+const store=x=>localStorage.setItem(KEY,JSON.stringify(x));
+const todayISO=()=>{let d=new Date(),o=d.getTimezoneOffset();return new Date(d-o*60000).toISOString().slice(0,10)};
+function build(){let b=$("metrics");defs.forEach(([id,l,h])=>{let d=document.createElement("div");d.className="metric";d.innerHTML='<div class="row"><div><strong>'+l+'</strong><div class="muted">'+h+'</div></div><div class="value" id="'+id+'V">5</div></div><input id="'+id+'" type="range" min="0" max="10" step="1" value="5">';b.appendChild(d);$(id).oninput=e=>$(id+"V").textContent=e.target.value})}
+function fill(date){let e=load()[date];defs.forEach(([id])=>{let v=e?.[id]??5;$(id).value=v;$(id+"V").textContent=v});$("note").value=e?.note??""}
+function save(){let date=$("date").value,a=load(),e={date,note:$("note").value.trim()};defs.forEach(([id])=>e[id]=+$(id).value);a[date]=e;store(a);render();draw();$("save").textContent="Lagret ✓";setTimeout(()=>$("save").textContent="Lagre dagen",900)}
+function esc(s){return s.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function render(){let es=Object.values(load()).sort((a,b)=>b.date.localeCompare(a.date)),l=$("histList");l.innerHTML=es.length?"":'<div class="muted" style="margin-top:12px">Ingen registreringer ennå.</div>';es.forEach(e=>{let d=document.createElement("div"),p=new Date(e.date+"T12:00:00").toLocaleDateString("nb-NO",{weekday:"short",day:"2-digit",month:"short",year:"numeric"});d.className="entry";d.innerHTML='<div class="row"><strong>'+p+'</strong><button>Rediger</button></div><div class="chips">'+defs.map(([id,l])=>'<span class="chip">'+l+': '+e[id]+'</span>').join("")+'</div>'+(e.note?'<div class="muted" style="margin-top:8px">'+esc(e.note)+'</div>':"");d.querySelector("button").onclick=()=>{$("date").value=e.date;fill(e.date);tab("today")};l.appendChild(d)})}
+function tab(x){["today","hist","graph"].forEach(y=>$(y).classList.toggle("hidden",x!==y));$("footer").classList.toggle("hidden",x!=="today");$("tToday").classList.toggle("active",x==="today");$("tHist").classList.toggle("active",x==="hist");$("tGraph").classList.toggle("active",x==="graph");if(x==="graph")draw()}
+function draw(){let c=$("chart"),ctx=c.getContext("2d"),m=$("gMetric").value,es=Object.values(load()).sort((a,b)=>a.date.localeCompare(b.date)).slice(-30);ctx.clearRect(0,0,c.width,c.height);let p=38,w=c.width-p*2,h=c.height-p*2;ctx.strokeStyle="#9ca3af";ctx.lineWidth=1;for(let i=0;i<=10;i+=2){let y=p+h-i/10*h;ctx.beginPath();ctx.moveTo(p,y);ctx.lineTo(p+w,y);ctx.stroke();ctx.fillStyle="#6b7280";ctx.font="12px sans-serif";ctx.fillText(i,8,y+4)}if(!es.length){ctx.fillStyle="#6b7280";ctx.font="16px sans-serif";ctx.fillText("Ingen data ennå",p,c.height/2);return}ctx.strokeStyle="#2563eb";ctx.lineWidth=3;ctx.beginPath();es.forEach((e,i)=>{let x=p+(es.length===1?w/2:i/(es.length-1)*w),y=p+h-e[m]/10*h;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.fillStyle="#2563eb";es.forEach((e,i)=>{let x=p+(es.length===1?w/2:i/(es.length-1)*w),y=p+h-e[m]/10*h;ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill()})}
+function csv(){let es=Object.values(load()).sort((a,b)=>a.date.localeCompare(b.date)),hs=["date",...defs.map(x=>x[0]),"note"],rows=[hs.join(","),...es.map(e=>hs.map(h=>'"'+String(e[h]??"").replaceAll('"','""')+'"').join(","))],blob=new Blob([rows.join("\n")],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="daily-state.csv";a.click()}
+build();$("date").value=todayISO();fill($("date").value);render();
+$("date").onchange=e=>fill(e.target.value);$("save").onclick=save;$("reset").onclick=()=>{defs.forEach(([id])=>{$(id).value=5;$(id+"V").textContent=5});$("note").value=""};
+$("tToday").onclick=()=>tab("today");$("tHist").onclick=()=>tab("hist");$("tGraph").onclick=()=>tab("graph");$("gMetric").onchange=draw;$("csv").onclick=csv;
+</script>
+</body></html>
